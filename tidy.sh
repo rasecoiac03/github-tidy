@@ -1,0 +1,79 @@
+#!/usr/bin/env sh
+
+GITHUB_API=${GITHUB_API:-https://api.github.com}
+DEFAULT_ORGANIZATION=$1
+S3_BUCKET_BACKUP=$2
+
+# TODO do a default help message
+# SLACK_WEBHOOK
+# GH_TOKEN
+# AWS_SECRET_ACCESS_KEY
+# AWS_ACCESS_KEY_ID
+
+mkdir -p zips
+
+if [[ ! $PROJECTS ]]; then
+    if [[ ! $3 ]]; then
+        echo "projects must be informed"
+        exit 1
+    fi
+    stat $3 > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        export PROJECTS=$3
+        echo "$3 is not a file.. trying use raw string."
+    else
+        export PROJECTS=$(cat $3)
+    fi
+fi
+
+# OR use like this
+# export PROJECTS=$(cat <<-END
+# project1
+# project2
+# END
+# )
+
+backup_and_delete_repo(){
+    project=$1
+
+    # Verify if project exists
+    status_code=$(curl -H "Authorization: token $GH_TOKEN" -w "%{http_code}" -o /dev/null -sL $GITHUB_API/repos/$DEFAULT_ORGANIZATION/$project)
+    if [ $status_code -ne 200 ]; then
+        echo "$project does not exist"
+        continue
+    fi
+
+    # Upload to S3
+    curl -H "Authorization: token $GH_TOKEN" -sL $GITHUB_API/repos/$DEFAULT_ORGANIZATION/$project/zipball > zips/$project.zip
+    docker run \
+	   -e "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" \
+	   -e "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" \
+	   -v $PWD:/data garland/aws-cli-docker aws s3 cp "zips/$project.zip" s3://$S3_BUCKET_BACKUP/
+    if [ $? -ne 0 ]; then
+        echo "zips/$project.zip - aws cp failed"
+        continue
+    fi
+
+    # Delete from github
+    status_code=$(curl -XDELETE -H "Authorization: token $GH_TOKEN" -w "%{http_code}" -o /dev/null -sL $GITHUB_API/repos/$DEFAULT_ORGANIZATION/$project)
+    if [ $status_code -ne 204 ]; then
+        echo "problem deleting repository $project"
+        continue
+    fi
+    echo "$project deleted from github"
+
+    # Notify to slack if env var exists
+    if [[ $SLACK_WEBHOOK ]]; then
+        curl -X POST -H 'Content-type:application/json' --data "{\"text\":\"Project \`$project\` removed from Github. Backup is on s3, bucket: \`$S3_BUCKET_BACKUP\`.\",\"channel\":\"engineering\",\"username\":\"Tidying\",\"icon_url\": \"http://media.gettyimages.com/vectors/document-cabinet-cartoon-vector-id465843229?s=170667a&w=1007\"}" $SLACK_WEBHOOK
+    fi
+}
+
+for project in $PROJECTS; do
+    if [[ $project ]]; then
+        backup_and_delete_repo $project &
+    fi
+done
+
+echo "parallel deleting"
+wait
+echo "done"
