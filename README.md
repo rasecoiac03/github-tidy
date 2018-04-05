@@ -7,3 +7,7 @@ Tidy Github organization.
 - Issues (future)
 - Pull Requests (future)
 ...
+
+## Helping out
+
+Ideas/Suggestions? Complaints? Create an issue or a pull request :D
