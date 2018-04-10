@@ -26,13 +26,6 @@ if [[ ! $PROJECTS ]]; then
     fi
 fi
 
-# OR use like this
-# export PROJECTS=$(cat <<-END
-# project1
-# project2
-# END
-# )
-
 backup_and_delete_repo(){
     project=$1
 
