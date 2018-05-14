@@ -1,5 +1,6 @@
 .DS_Store
 **/*.zip
-projects*
+project*
 notes
 test*
+*.links
