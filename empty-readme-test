@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+
+GITHUB_API=${GITHUB_API:-https://api.github.com}
+DEFAULT_ORGANIZATION=$1
+
+RED='\033[0;31m'
+WHITE='\033[1;37m'
+GRAY='\033[1;30m'
+NC='\033[0m' # No Color
+
+NOT_FOUND_FILE="not-found.links"
+SHORT_CONTENT_FILE="short-content.links"
+rm -f $NOT_FOUND_FILE $SHORT_CONTENT_FILE
+
+print_separator() {
+    echo -e "${GRAY}============================================================${NC}"
+}
+
+check_readme() {
+    repo=$1
+    readme=$2
+    status_code=$(curl -H "Authorization: token $GH_TOKEN" -w "%{http_code}" -o /dev/null -sL $GITHUB_API/repos/$repo/readme)
+    if [ $status_code -ne 200 ]; then
+        echo -e "${RED}${readme} not found${NC}"
+        return 1
+    fi
+    return 0
+}
+
+check_repo () {
+    repo=$1
+    print_separator
+    echo -e "checking ${WHITE}${repo}${NC}"
+
+    check_readme $repo "readme"
+    readme_exists=$?
+    if [ $readme_exists -ne 0 ]; then
+        echo "https://github.com/"$repo >> $NOT_FOUND_FILE
+        return 1
+    fi
+
+    readme_content_length=$(curl -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github.VERSION.raw" -sL $GITHUB_API/repos/$repo/contents/README.md | wc -l)
+
+    if [ $readme_content_length -lt 15 ]; then
+        echo -e "${RED}readme content - ${readme_content_length}${NC}"
+        echo "https://github.com/"$repo >> $SHORT_CONTENT_FILE
+    fi
+
+    return 0
+}
+
+read_repos() {
+    page=$2
+    repos=$(curl -H "Authorization: token $GH_TOKEN" -sL $1?page=$page | jq -r '.[].full_name')
+    repos_length=$(echo $repos | tr -d '\n' | wc -m)
+    if [ $repos_length -eq 0 ]; then
+        print_separator
+        echo "there is no more projects to check"
+        return 0
+    fi
+
+    for repo in $repos; do
+        check_repo $repo
+    done
+
+    page=$(($page+1))
+    return $page
+}
+
+page=1
+while [ $page -gt 0 ]; do
+    read_repos $GITHUB_API/orgs/$DEFAULT_ORGANIZATION/repos $page
+    page=$?
+done
