@@ -39,11 +39,11 @@ check_repo () {
         return 1
     fi
 
-    readme_content_length=$(curl -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github.VERSION.raw" -sL $GITHUB_API/repos/$repo/contents/README.md | wc -l)
+    readme_content_length=$(curl -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github.VERSION.raw" -sL $GITHUB_API/repos/$repo/readme | wc -l)
 
     if [ $readme_content_length -lt 15 ]; then
         echo -e "${RED}readme content - ${readme_content_length}${NC}"
-        echo "https://github.com/"$repo >> $SHORT_CONTENT_FILE
+        echo "$readme_content_length - https://github.com/"$repo >> $SHORT_CONTENT_FILE
     fi
 
     return 0
@@ -60,8 +60,11 @@ read_repos() {
     fi
 
     for repo in $repos; do
-        check_repo $repo
+        check_repo $repo &
     done
+
+    echo "checking set of repos in parallel"
+    wait
 
     page=$(($page+1))
     return $page

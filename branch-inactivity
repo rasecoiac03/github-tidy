@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+
+# gdate command expected
+# use gdate if it's on macOS or just date if it is linux
+
+GITHUB_API=${GITHUB_API:-https://api.github.com}
+REPO=$1
+
+RED='\033[0;31m'
+WHITE='\033[1;37m'
+GRAY='\033[1;30m'
+NC='\033[0m' # No Color
+
+print_separator() {
+    echo -e "${GRAY}============================================================${NC}"
+}
+
+check_branch() {
+    branch=$2
+    last_commit_date=$(curl -H "Authorization: token $GH_TOKEN" -sL $1/$branch | jq -r '.commit.commit.committer.date')
+    last_commit_diff_days=$(echo "(`gdate '+%s'` - `gdate '+%s' -d "$last_commit_date"`) / (24*3600)" | bc)
+    if [ $last_commit_diff_days -gt 30 ]; then
+        echo -e "${RED}inactive for more than 30 days (${last_commit_diff_days} days)${NC}"
+        return 1
+    fi
+    echo -e "OK (${last_commit_diff_days} days)"
+    return 0
+}
+
+read_branches() {
+    page=$2
+    branches=$(curl -H "Authorization: token $GH_TOKEN" -sL $1?page=$page | jq -r '.[].name')
+    branches_length=$(echo $branches | tr -d '\n' | wc -m)
+    if [ $branches_length -eq 0 ]; then
+        print_separator
+        echo "there is no more branches to check"
+        return 0
+    fi
+
+    for branch in $branches; do
+        print_separator
+        echo -e "checking ${WHITE}${branch}${NC}"
+        check_branch $1 $branch
+    done
+
+    page=$(($page+1))
+    return $page
+}
+
+page=1
+while [ $page -gt 0 ]; do
+    read_branches $GITHUB_API/repos/$REPO/branches $page
+    page=$?
+done
