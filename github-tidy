@@ -37,7 +37,6 @@ backup_and_delete_repo(){
     fi
 
     # Upload to S3
-    touch zips/$project.zip
     curl -H "Authorization: token $GH_TOKEN" -sL $GITHUB_API/repos/$DEFAULT_ORGANIZATION/$project/zipball > zips/$project.zip
     docker run \
 	   -e "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" \
