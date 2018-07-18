@@ -42,7 +42,7 @@ backup_and_delete_repo(){
 	   -e "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" \
 	   -e "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" \
 	   -e "AWS_DEFAULT_REGION=us-east-1" \
-	   -v $PWD:/data garland/aws-cli-docker aws --region=us-east-1 s3 cp "zips/$project.zip" s3://$S3_BUCKET_BACKUP/
+	   -v $PWD:/data mesosphere/aws-cli --region=us-east-1 s3 cp "zips/$project.zip" s3://$S3_BUCKET_BACKUP/
     if [ $? -ne 0 ]; then
         echo "zips/$project.zip - aws cp failed"
         continue
