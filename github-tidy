@@ -31,7 +31,6 @@ backup_and_delete_repo(){
 
     # Verify if project exists
     status_code=$(curl -H "Authorization: token $GH_TOKEN" -w "%{http_code}" -o /dev/null -sL $GITHUB_API/repos/$DEFAULT_ORGANIZATION/$project)
-    echo $status_code
     if [ $status_code -ne 200 ]; then
         echo "$project does not exist"
         continue
@@ -39,10 +38,10 @@ backup_and_delete_repo(){
 
     # Upload to S3
     curl -H "Authorization: token $GH_TOKEN" -sL $GITHUB_API/repos/$DEFAULT_ORGANIZATION/$project/zipball > zips/$project.zip
+    stat zips/$project.zip
     docker run \
 	   -e "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" \
 	   -e "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" \
-	   -e "AWS_DEFAULT_REGION=us-east-1" \
 	   -v $PWD:/data garland/aws-cli-docker aws s3 cp "zips/$project.zip" s3://$S3_BUCKET_BACKUP/
     if [ $? -ne 0 ]; then
         echo "zips/$project.zip - aws cp failed"
