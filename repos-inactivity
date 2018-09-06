@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+
+# gdate command expected
+# use gdate if it's on macOS or just date if it is linux
+
+GITHUB_API=${GITHUB_API:-https://api.github.com}
+DEFAULT_ORGANIZATION=$1
+
+RED='\033[0;31m'
+GRAY='\033[1;30m'
+NC='\033[0m' # No Color
+
+DAYS=365
+
+print_separator() {
+    echo -e "${GRAY}============================================================${NC}"
+}
+
+check_branch() {
+    repo=$1
+    branch=$2
+    endpoint=$GITHUB_API/repos/$repo/branches
+    last_commit_date=$(curl -H "Authorization: token ${GH_TOKEN}" -sL ${endpoint}/${branch} 2> /dev/null | jq -r '.commit.commit.committer.date')
+    if [ "$last_commit_date" == "null" ]; then
+        echo "0 - https://github.com/${repo} - ${last_commit_diff_days}"
+        return
+    fi
+    last_commit_diff_days=$(echo "(`gdate '+%s'` - `gdate '+%s' -d "${last_commit_date}"`) / (24*3600)" | bc)
+    if [ $last_commit_diff_days -gt $DAYS ]; then
+        echo -e "${last_commit_diff_days} - https://github.com/${repo} ${RED}inactive for more than $DAYS days (${last_commit_diff_days} days)${NC}"
+        return 1
+    fi
+    # echo -e "OK (${last_commit_diff_days} days)"
+    return 0
+}
+
+read_repos() {
+    page=$2
+    repos=$(curl -H "Authorization: token ${GH_TOKEN}" -sL $1?page=${page} | jq -r '.[].full_name')
+    repos_length=$(echo ${repos} | tr -d '\n' | wc -m)
+    if [ $repos_length -eq 0 ]; then
+        # there is no more projects to check
+        return 0
+    fi
+
+    for repo in $repos; do
+        check_branch $repo master &
+    done
+
+    wait
+
+    page=$(($page+1))
+    return $page
+}
+
+page=1
+while [ $page -gt 0 ]; do
+    read_repos $GITHUB_API/orgs/$DEFAULT_ORGANIZATION/repos $page
+    page=$?
+done
+
