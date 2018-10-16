@@ -5,6 +5,7 @@
 
 GITHUB_API=${GITHUB_API:-https://api.github.com}
 DEFAULT_ORGANIZATION=$1
+REPO_TYPE=${2:-all}
 
 RED='\033[0;31m'
 GRAY='\033[1;30m'
@@ -48,6 +49,6 @@ read_repos() {
 
 page=1
 while [ $page -gt 0 ]; do
-    read_repos $GITHUB_API/orgs/$DEFAULT_ORGANIZATION/repos $page
+    read_repos $GITHUB_API/orgs/$DEFAULT_ORGANIZATION/repos?type=$REPO_TYPE $page
     page=$?
 done
