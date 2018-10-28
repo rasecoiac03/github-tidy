@@ -5,7 +5,6 @@
 
 GITHUB_API=${GITHUB_API:-https://api.github.com}
 DEFAULT_ORGANIZATION=$1
-REPO_TYPE=${2:-all}
 
 RED='\033[0;31m'
 GRAY='\033[1;30m'
@@ -15,16 +14,18 @@ print_separator() {
     echo -e "${GRAY}============================================================${NC}"
 }
 
+rm -f recent-repos.links
+
 check_creation() {
     repo=$1
     endpoint=$GITHUB_API/repos/$repo
     creation_date=$(curl -H "Authorization: token ${GH_TOKEN}" -sL ${endpoint} 2> /dev/null | jq -r '.created_at')
     if [ "$creation_date" == "null" ]; then
-        echo "0 - https://github.com/${repo} - ${diff_days}"
+        echo "0 - https://github.com/${repo} - ${diff_days}" >> recent-repos.links
         return
     fi
     diff_days=$(echo "(`gdate '+%s'` - `gdate '+%s' -d "${creation_date}"`) / (24*3600)" | bc)
-    echo -e "${diff_days} - https://github.com/${repo} ${RED}created ${diff_days} days ago${NC}"
+    echo -e "${diff_days} - https://github.com/${repo} ${RED}created ${diff_days} days ago${NC}" >> recent-repos.links
     return 0
 }
 
@@ -37,8 +38,14 @@ read_repos() {
         return 0
     fi
 
+    process_count=0
     for repo in $repos; do
         check_creation $repo &
+	process_count=$(($process_count+1))
+	if [ $process_count -eq 10 ]; then
+	    wait
+	    process_count=0
+	fi
     done
 
     wait
@@ -49,6 +56,6 @@ read_repos() {
 
 page=1
 while [ $page -gt 0 ]; do
-    read_repos $GITHUB_API/orgs/$DEFAULT_ORGANIZATION/repos?type=$REPO_TYPE $page
+    read_repos $GITHUB_API/orgs/$DEFAULT_ORGANIZATION/repos $page
     page=$?
 done
