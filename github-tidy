@@ -51,7 +51,7 @@ backup_and_delete_repo(){
     # Delete from github
     status_code=$(curl -XDELETE -H "Authorization: token $GH_TOKEN" -w "%{http_code}" -o /dev/null -sL $GITHUB_API/repos/$DEFAULT_ORGANIZATION/$project)
     if [ $status_code -ne 204 ]; then
-        echo "problem deleting repository $project"
+        echo "problem deleting repository $project $status_code"
         continue
     fi
     echo "$project deleted from github"
