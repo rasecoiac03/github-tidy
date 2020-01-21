@@ -20,7 +20,9 @@ check_branch() {
     repo=$1
     branch=$2
     endpoint=$GITHUB_API/repos/$repo/branches
-    last_commit_date=$(curl -H "Authorization: token ${GH_TOKEN}" -sL ${endpoint}/${branch} 2> /dev/null | jq -r '.commit.commit.committer.date')
+    result=$(curl -H "Authorization: token ${GH_TOKEN}" -sL ${endpoint}/${branch} 2> /dev/null)
+    #echo $result
+    last_commit_date=$(echo $result | jq -r '.commit.commit.committer.date')
     if [ "$last_commit_date" == "null" ]; then
         echo "0 - https://github.com/${repo} - ${last_commit_diff_days}"
         return
@@ -30,7 +32,7 @@ check_branch() {
         echo -e "${last_commit_diff_days} - https://github.com/${repo} ${RED}inactive for more than $DAYS days (${last_commit_diff_days} days)${NC}"
         return 1
     fi
-    # echo -e "OK (${last_commit_diff_days} days)"
+    #echo -e "OK (${last_commit_diff_days} days)"
     return 0
 }
 
@@ -45,6 +47,7 @@ read_repos() {
 
     for repo in $repos; do
         check_branch $repo master &
+	sleep 0.1
     done
 
     wait
