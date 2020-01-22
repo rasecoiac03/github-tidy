@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+
+# gdate command expected
+# use gdate if it's on macOS or just date if it is linux
+
+GITHUB_API=${GITHUB_API:-https://api.github.com}
+DEFAULT_ORGANIZATION=$1
+
+RED='\033[0;31m'
+GRAY='\033[1;30m'
+NC='\033[0m' # No Color
+
+print_separator() {
+    echo -e "${GRAY}============================================================${NC}"
+}
+
+rm -f archived-repos.links
+
+check_archived() {
+    repo=$1
+    endpoint=$GITHUB_API/repos/$repo
+    result=$(curl -H "Authorization: token ${GH_TOKEN}" -sL ${endpoint} 2> /dev/null)
+    archived=$(echo $result | jq -r '.archived')
+    if [ "$archived" == "true" ]; then
+        echo "https://github.com/${repo}" >> archived-repos.links
+        return
+    fi
+    return 0
+}
+
+read_repos() {
+    page=$2
+    result=$(curl -H "Authorization: token ${GH_TOKEN}" -sL $1?page=${page})
+    repos=$(echo $result | jq -r '.[].full_name')
+    repos_length=$(echo ${repos} | tr -d '\n' | wc -m)
+    if [ $repos_length -eq 0 ]; then
+        # there is no more projects to check
+        return 0
+    fi
+
+    process_count=0
+    for repo in $repos; do
+        check_archived $repo &
+	process_count=$(($process_count+1))
+	if [ $process_count -eq 10 ]; then
+	    wait
+	    process_count=0
+	fi
+    done
+
+    wait
+
+    page=$(($page+1))
+    return $page
+}
+
+page=1
+while [ $page -gt 0 ]; do
+    read_repos $GITHUB_API/orgs/$DEFAULT_ORGANIZATION/repos $page
+    page=$?
+    sleep 0.5
+done
