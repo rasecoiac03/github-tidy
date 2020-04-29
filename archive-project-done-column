@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+
+# usage:
+# ./archive-project-done-column [org or user]/[repo]
+# This script get the first project for now.
+
+GITHUB_API=${GITHUB_API:-https://api.github.com}
+PROJECT=$1
+
+endpoint="$GITHUB_API/repos/$PROJECT/projects"
+result=$(curl -H "Accept: application/vnd.github.inertia-preview+json" -H "Authorization: token ${GH_TOKEN}" -sL ${endpoint} 2> /dev/null)
+project_id=$(echo $result | jq 'first(.[]) | .id')
+
+endpoint="$GITHUB_API/projects/$project_id/columns"
+result=$(curl -H "Accept: application/vnd.github.inertia-preview+json" -H "Authorization: token ${GH_TOKEN}" -sL ${endpoint} 2> /dev/null)
+
+done_column_id=$(echo $result | jq -r '.[] | select(.name == "Done") | .id')
+
+page=1
+while [ 1 ]; do
+    endpoint="$GITHUB_API/projects/columns/$done_column_id/cards?page=$page"
+    result=$(curl -H "Accept: application/vnd.github.inertia-preview+json" -H "Authorization: token ${GH_TOKEN}" -sL ${endpoint} 2> /dev/null)
+
+    cards_length=$(echo $result | jq -r '.[].id' | tr -d '\n' | wc -m)
+    if [ $cards_length -eq 0 ]; then
+        break
+    fi
+
+    for card_id in $(echo $result | jq -r '.[] | select(.content_url != null) | .id'); do
+        echo "----------------------------------------"
+        echo "archiving $card_id"
+        endpoint="$GITHUB_API/projects/columns/cards/$card_id"
+        curl -X PATCH -H "Accept: application/vnd.github.inertia-preview+json" -H "Authorization: token ${GH_TOKEN}" -sL ${endpoint} -d '{"archived": true}' | jq -r '.archived'
+        sleep 0.1 # avoid github rate limit 
+    done
+
+    page=$(($page+1))
+done
