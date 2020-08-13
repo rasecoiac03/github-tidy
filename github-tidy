@@ -28,6 +28,9 @@ if [[ ! $PROJECTS ]]; then
 fi
 
 backup_and_delete_repo(){
+    # Exit program on first error
+    set -e
+
     project=$1
 
     # Verify if project exists
