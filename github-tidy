@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 GITHUB_API=${GITHUB_API:-https://api.github.com}
-GITHUB_CLONE=${GITHUB_REPO:-git@github.com}
+GITHUB_CLONE=${GITHUB_CLONE:-https://$GH_TOKEN@github.com}
 DEFAULT_ORGANIZATION=$1
 S3_BUCKET_BACKUP=$2
 
@@ -28,6 +28,9 @@ if [[ ! $PROJECTS ]]; then
 fi
 
 backup_and_delete_repo(){
+    # Exit program on first error
+    set -e
+
     project=$1
 
     # Verify if project exists
@@ -38,7 +41,7 @@ backup_and_delete_repo(){
     fi
 
     # Clone and generate a bundle file
-    git clone $GITHUB_CLONE:$DEFAULT_ORGANIZATION/$project.git
+    git clone $GITHUB_CLONE/$DEFAULT_ORGANIZATION/$project.git
     cd $project
     git bundle create $project.bundle --all
     mv $project.bundle ../
