@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 GITHUB_API=${GITHUB_API:-https://api.github.com}
+GITHUB_CLONE=${GITHUB_REPO:-git@github.com}
 DEFAULT_ORGANIZATION=$1
 S3_BUCKET_BACKUP=$2
 
@@ -36,15 +37,27 @@ backup_and_delete_repo(){
         continue
     fi
 
+    # Clone and generate a bundle file
+    git clone $GITHUB_CLONE:$DEFAULT_ORGANIZATION/$project.git
+    cd $project
+    git bundle create $project.bundle --all
+    mv $project.bundle ../
+    cd ../
+    rm -rf $project
+    # Generate a simple readme
+    echo "To unbundle, just run: git clone $project.bundle
+It will create a directory called $project with git repository ready to be used." > README.md
+    tar -cvzf $project.tar.gz $project.bundle README.md
+    mv $project.tar.gz ./zips/
+
     # Upload to S3
-    curl -H "Authorization: token $GH_TOKEN" -sL $GITHUB_API/repos/$DEFAULT_ORGANIZATION/$project/zipball > zips/$project.zip
-    stat zips/$project.zip
+    stat zips/$project.tar.gz
     docker run \
-	   -e "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" \
-	   -e "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" \
-	   -v $PWD:/data garland/aws-cli-docker aws s3 cp "zips/$project.zip" s3://$S3_BUCKET_BACKUP/
+    	   -e "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" \
+    	   -e "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" \
+    	   -v $PWD:/data garland/aws-cli-docker aws s3 cp "zips/$project.tar.gz" s3://$S3_BUCKET_BACKUP/
     if [ $? -ne 0 ]; then
-        echo "zips/$project.zip - aws cp failed"
+        echo "zips/$project.tar.gz - aws cp failed"
         continue
     fi
 
