@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+
+GITHUB_API=${GITHUB_API:-https://api.github.com}
+DEFAULT_ORGANIZATION=$1
+TOPIC=$2
+NOT_ALLOWED_PATTERN=$3
+
+RED='\033[0;31m'
+GRAY='\033[1;30m'
+NC='\033[0m' # No Color
+
+print_separator() {
+    echo -e "${GRAY}============================================================${NC}"
+}
+
+set_topic_repo() {
+    repo=$1
+    topic=$2
+
+    endpoint=$GITHUB_API/repos/$repo/topics
+    echo repo:  "$repo"
+    echo topic:  "$topic"
+    echo endpoint:  "$endpoint"
+    print_separator
+
+    # get previous topics
+    result=$(curl \
+        -X GET \
+        -H "Authorization: token ${GH_TOKEN}" \
+        -H "Accept: application/vnd.github.mercy-preview+json" \
+        -sL "$endpoint" 2> /dev/null)
+
+    data=$(echo $result |
+     jq -r --arg topic "$topic" '.names + [$topic]')
+
+    curl \
+    -X PUT \
+     -H "Authorization: token ${GH_TOKEN}" \
+    -H "Accept: application/vnd.github.mercy-preview+json" \
+    -sL $endpoint \
+    -d "{\"names\": $data}"
+
+    return 0
+}
+
+read_repos() {
+    page=$2
+    topic=$3
+    result=$(curl -H "Authorization: token ${GH_TOKEN}" -sL $1?page=${page})
+    repos=$(echo $result | jq -r '.[].full_name')
+    repos_length=$(echo ${repos} | tr -d '\n' | wc -m)
+    if [ $repos_length -eq 0 ]; then
+        # there is no more projects to check
+        return 0
+    fi
+
+    process_count=0
+    for repo in $repos; do
+        if [[ ! $repo =~ $NOT_ALLOWED_PATTERN ]] ; then
+            set_topic_repo "$repo" "$topic" &
+        fi
+    process_count=$(($process_count+1))
+    if [ $process_count -eq 10 ]; then
+        wait
+        process_count=0
+    fi
+    done
+
+    wait
+
+    page=$(($page+1))
+    return $page
+}
+
+page=1
+while [ $page -gt 0 ]; do
+    read_repos $GITHUB_API/orgs/$DEFAULT_ORGANIZATION/repos $page $TOPIC
+    page=$?
+    sleep 0.5
+done
