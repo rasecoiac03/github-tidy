@@ -3,7 +3,7 @@
 GITHUB_API=${GITHUB_API:-https://api.github.com}
 DEFAULT_ORGANIZATION=$1
 TOPIC=$2
-exclude_pattern="(protected|private)"
+NOT_ALLOWED_PATTERN=$3
 
 RED='\033[0;31m'
 GRAY='\033[1;30m'
@@ -56,7 +56,7 @@ read_repos() {
 
     process_count=0
     for repo in $repos; do
-        if [[ ! $repo =~ $exclude_pattern ]] ; then
+        if [[ ! $repo =~ $NOT_ALLOWED_PATTERN ]] ; then
             set_topic_repo "$repo" "$topic" &
         fi
     process_count=$(($process_count+1))
