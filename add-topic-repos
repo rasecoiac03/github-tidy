@@ -59,11 +59,11 @@ read_repos() {
         if [[ ! $repo =~ $exclude_pattern ]] ; then
             set_topic_repo "$repo" "$topic" &
         fi
-	process_count=$(($process_count+1))
-	if [ $process_count -eq 10 ]; then
-	    wait
-	    process_count=0
-	fi
+    process_count=$(($process_count+1))
+    if [ $process_count -eq 10 ]; then
+        wait
+        process_count=0
+    fi
     done
 
     wait
