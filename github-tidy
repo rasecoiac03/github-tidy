@@ -70,11 +70,12 @@ It will create a directory called $project with git repository ready to be used.
 
     # Delete from github
     status_code=$(curl -XDELETE -H "Authorization: token $GH_TOKEN" -w "%{http_code}" -o /dev/null -sL $GITHUB_API/repos/$DEFAULT_ORGANIZATION/$project)
-    if [ $status_code -ne 204 ]; then
+    if [ $status_code -e 204 ]; then
+        echo "$project deleted from github"
+    else
         echo "problem deleting repository $project $status_code"
-        continue
+        return
     fi
-    echo "$project deleted from github"
 
     # Notify to slack if env var exists
     if [ ! -z "${SLACK_WEBHOOK}" ]; then
