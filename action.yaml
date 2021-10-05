@@ -10,17 +10,11 @@ inputs:
     description: 'The name of the repository to be archived (e.g. "severino" to archive https://github.com/<organization>/severino)'
     required: true
   gitHubToken:
-    description: 'A GitHub token with permissions to read and remove repositories'
+    description: 'A GitHub token with permissions to read and remove the repository'
     required: true
   s3Bucket:
     description: 'The S3 bucket where the repository should be archived'
     required: true
-#  awsAccessKeyId:
-#    description: 'The AWS access key ID to be used for storing data in S3'
-#    required: true
-#  awsSecretAccessKey:
-#    description: 'The AWS secret access key to be used for storing data in S3'
-#    required: true
   slackWebhook:
     description: "And optional Slack webhook if you want the successful result to be posted to Slack"
     required: false
