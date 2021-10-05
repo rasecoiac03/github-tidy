@@ -55,10 +55,14 @@ It will create a directory called $project with git repository ready to be used.
 
     # Upload to S3
     stat zips/$project.tar.gz
-    docker run \
-    	   -e "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" \
-    	   -e "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" \
-    	   -v $PWD:/data garland/aws-cli-docker aws s3 cp "zips/$project.tar.gz" s3://$S3_BUCKET_BACKUP/
+    if [ "${AWS_CLI}" == "true" ]; then
+      aws s3 cp "zips/$project.tar.gz" s3://$S3_BUCKET_BACKUP/
+    else
+      docker run \
+      	   -e "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" \
+      	   -e "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" \
+      	   -v $PWD:/data garland/aws-cli-docker aws s3 cp "zips/$project.tar.gz" s3://$S3_BUCKET_BACKUP/
+    fi
     if [ $? -ne 0 ]; then
         echo "zips/$project.tar.gz - aws cp failed"
         continue
