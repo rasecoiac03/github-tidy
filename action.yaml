@@ -15,12 +15,12 @@ inputs:
   s3Bucket:
     description: 'The S3 bucket where the repository should be archived'
     required: true
-  awsAccessKeyId:
-    description: 'The AWS access key ID to be used for storing data in S3'
-    required: true
-  awsSecretAccessKey:
-    description: 'The AWS secret access key to be used for storing data in S3'
-    required: true
+#  awsAccessKeyId:
+#    description: 'The AWS access key ID to be used for storing data in S3'
+#    required: true
+#  awsSecretAccessKey:
+#    description: 'The AWS secret access key to be used for storing data in S3'
+#    required: true
   slackWebhook:
     description: "And optional Slack webhook if you want the successful result to be posted to Slack"
     required: false
