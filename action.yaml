@@ -16,7 +16,7 @@ inputs:
     description: 'The S3 bucket where the repository should be archived'
     required: true
   slackWebhook:
-    description: "And optional Slack webhook if you want the successful result to be posted to Slack"
+    description: "Optional Slack webhook if you want the successful result to be posted to Slack"
     required: false
 
 runs:
