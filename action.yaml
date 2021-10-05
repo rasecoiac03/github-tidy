@@ -30,8 +30,7 @@ runs:
   steps:
     - env:
         GH_TOKEN: ${{ inputs.gitHubToken }}
-        AWS_ACCESS_KEY_ID: ${{ inputs.awsAccessKeyId }}
-        AWS_SECRET_ACCESS_KEY: ${{ inputs.awsSecretAccessKey }}
+        AWS_CLI: 'true'
         SLACK_WEBHOOK: ${{ inputs.slackWebhook }}
       run: ${{ github.action_path }}/github-tidy ${{ inputs.organization }} ${{ inputs.s3Bucket }} ${{ inputs.repository }}
       shell: bash
