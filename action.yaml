@@ -1,0 +1,38 @@
+name: 'Archive GitHub repository in S3 bucket'
+
+description: 'Archive the specified GitHub repository in the specified AWS S3 bucket'
+
+inputs:
+  organization:
+    description: 'The GitHub organization'
+    required: true
+  repository:
+    description: 'The name of the repository to be archived (e.g. "severino" to archive https://github.com/<organization>/severino)'
+    required: true
+  gitHubToken:
+    description: 'A GitHub token with permissions to read and remove repositories'
+    required: true
+  s3Bucket:
+    description: 'The S3 bucket where the repository should be archived'
+    required: true
+  awsAccessKeyId:
+    description: 'The AWS access key ID to be used for storing data in S3'
+    required: true
+  awsSecretAccessKey:
+    description: 'The AWS secret access key to be used for storing data in S3'
+    required: true
+  slackWebhook:
+    description: "And optional Slack webhook if you want the successful result to be posted to Slack"
+    required: false
+
+runs:
+  using: "composite"
+  steps:
+    - env:
+        GH_TOKEN: ${{ inputs.gitHubToken }}
+        AWS_ACCESS_KEY_ID: ${{ inputs.awsAccessKeyId }}
+        AWS_SECRET_ACCESS_KEY: ${{ inputs.awsSecretAccessKey }}
+        SLACK_WEBHOOK: ${{ inputs.slackWebhook }}
+      run: ${{ github.action_path }}/github-tidy ${{ inputs.organization }} ${{ inputs.s3Bucket }} ${{ inputs.repository }}
+      shell: bash
+

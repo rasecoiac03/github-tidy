@@ -73,7 +73,7 @@ It will create a directory called $project with git repository ready to be used.
     echo "$project deleted from github"
 
     # Notify to slack if env var exists
-    if [[ $SLACK_WEBHOOK ]]; then
+    if [ ! -z "${SLACK_WEBHOOK}" ]; then
         curl -X POST -H 'Content-type:application/json' --data "{\"text\":\"Project \`$project\` removed from Github. Backup is on s3, bucket: \`$S3_BUCKET_BACKUP\`.\",\"channel\":\"engineering\",\"username\":\"Tidying\",\"icon_url\": \"http://media.gettyimages.com/vectors/document-cabinet-cartoon-vector-id465843229?s=170667a&w=1007\"}" $SLACK_WEBHOOK
     fi
 }
