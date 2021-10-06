@@ -55,10 +55,14 @@ It will create a directory called $project with git repository ready to be used.
 
     # Upload to S3
     stat zips/$project.tar.gz
-    docker run \
-    	   -e "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" \
-    	   -e "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" \
-    	   -v $PWD:/data garland/aws-cli-docker aws s3 cp "zips/$project.tar.gz" s3://$S3_BUCKET_BACKUP/
+    if [ "${AWS_CLI}" == "true" ]; then
+      aws s3 cp "zips/$project.tar.gz" s3://$S3_BUCKET_BACKUP/
+    else
+      docker run \
+      	   -e "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" \
+      	   -e "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" \
+      	   -v $PWD:/data garland/aws-cli-docker aws s3 cp "zips/$project.tar.gz" s3://$S3_BUCKET_BACKUP/
+    fi
     if [ $? -ne 0 ]; then
         echo "zips/$project.tar.gz - aws cp failed"
         continue
@@ -66,14 +70,15 @@ It will create a directory called $project with git repository ready to be used.
 
     # Delete from github
     status_code=$(curl -XDELETE -H "Authorization: token $GH_TOKEN" -w "%{http_code}" -o /dev/null -sL $GITHUB_API/repos/$DEFAULT_ORGANIZATION/$project)
-    if [ $status_code -ne 204 ]; then
+    if [ $status_code -eq 204 ]; then
+        echo "$project deleted from github"
+    else
         echo "problem deleting repository $project $status_code"
-        continue
+        return
     fi
-    echo "$project deleted from github"
 
     # Notify to slack if env var exists
-    if [[ $SLACK_WEBHOOK ]]; then
+    if [ ! -z "${SLACK_WEBHOOK}" ]; then
         curl -X POST -H 'Content-type:application/json' --data "{\"text\":\"Project \`$project\` removed from Github. Backup is on s3, bucket: \`$S3_BUCKET_BACKUP\`.\",\"channel\":\"engineering\",\"username\":\"Tidying\",\"icon_url\": \"http://media.gettyimages.com/vectors/document-cabinet-cartoon-vector-id465843229?s=170667a&w=1007\"}" $SLACK_WEBHOOK
     fi
 }
