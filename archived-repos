@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 
-# gdate command expected
-# use gdate if it's on macOS or just date if it is linux
-
 GITHUB_API=${GITHUB_API:-https://api.github.com}
 DEFAULT_ORGANIZATION=$1
 

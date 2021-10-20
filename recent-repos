@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 
-# gdate command expected
-# use gdate if it's on macOS or just date if it is linux
-
 GITHUB_API=${GITHUB_API:-https://api.github.com}
 DEFAULT_ORGANIZATION=$1
 
@@ -24,7 +21,7 @@ check_creation() {
         echo "0 - https://github.com/${repo} - ${diff_days}" >> recent-repos.links
         return
     fi
-    diff_days=$(echo "(`gdate '+%s'` - `gdate '+%s' -d "${creation_date}"`) / (24*3600)" | bc)
+    diff_days=$(echo "(`date '+%s'` - `date '+%s' -d "${creation_date}"`) / (24*3600)" | bc)
     echo -e "${diff_days} - https://github.com/${repo} ${RED}created ${diff_days} days ago${NC}" >> recent-repos.links
     return 0
 }

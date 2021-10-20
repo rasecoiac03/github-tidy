@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 
-# gdate command expected
-# use gdate if it's on macOS or just date if it is linux
-
 GITHUB_API=${GITHUB_API:-https://api.github.com}
 REPO=$1
 
@@ -18,9 +15,9 @@ print_separator() {
 check_branch() {
     branch=$2
     last_commit_date=$(curl -H "Authorization: token $GH_TOKEN" -sL $1/$branch | jq -r '.commit.commit.committer.date')
-    last_commit_diff_days=$(echo "(`gdate '+%s'` - `gdate '+%s' -d "$last_commit_date"`) / (24*3600)" | bc)
-    if [ $last_commit_diff_days -gt 30 ]; then
-        echo -e "${RED}inactive for more than 30 days (${last_commit_diff_days} days)${NC}"
+    last_commit_diff_days=$(echo "(`date '+%s'` - `date '+%s' -d "$last_commit_date"`) / (24*3600)" | bc)
+    if [ $last_commit_diff_days -gt 89 ]; then
+        echo -e "${RED}inactive for more than 90 days (${last_commit_diff_days} days)${NC}"
         return 1
     fi
     echo -e "OK (${last_commit_diff_days} days)"
