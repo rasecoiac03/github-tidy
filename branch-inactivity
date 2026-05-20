@@ -4,6 +4,7 @@ GITHUB_API=${GITHUB_API:-https://api.github.com}
 INACTIVITY_DAYS=${INACTIVITY_DAYS:-90}
 
 RED='\033[0;31m'
+YELLOW='\033[0;33m'
 WHITE='\033[1;37m'
 GRAY='\033[1;30m'
 NC='\033[0m' # No Color
@@ -12,14 +13,16 @@ usage() {
     echo "Usage: $(basename "$0") <repo>"
     echo ""
     echo "  repo can be:"
-    echo "    - owner/repo              (GitHub API; requires GH_TOKEN)"
+    echo "    - owner/repo"
     echo "    - https://github.com/owner/repo"
     echo "    - git@github.com:owner/repo.git"
-    echo "    - /path/to/local/repo     (or . for the current directory)"
-    echo "    - any other git remote URL (bare clone to a temp directory)"
+    echo "    - /path/to/local/repo  (reads origin remote to resolve owner/repo)"
+    echo "    - .                      (current directory)"
+    echo ""
+    echo "  Branch checks always use the GitHub API (requires GH_TOKEN)."
     echo ""
     echo "  Environment:"
-    echo "    GH_TOKEN           GitHub token (required for GitHub API mode)"
+    echo "    GH_TOKEN           GitHub token (required)"
     echo "    INACTIVITY_DAYS    Threshold in days (default: 90)"
     exit 1
 }
@@ -28,11 +31,58 @@ print_separator() {
     echo -e "${GRAY}============================================================${NC}"
 }
 
-days_since_epoch() {
-    local epoch=$1
-    local now
-    now=$(date '+%s')
-    echo $(( (now - epoch) / 86400 ))
+# Prints owner/repo from a GitHub remote URL.
+parse_github_remote() {
+    local url=$1
+
+    if [[ "$url" =~ ^https?://github\.com/([^/]+)/([^/.]+) ]]; then
+        echo "${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+        return 0
+    fi
+
+    if [[ "$url" =~ ^git@github\.com:([^/]+)/([^/.]+) ]]; then
+        echo "${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+        return 0
+    fi
+
+    return 1
+}
+
+# Resolves input to owner/repo (GitHub only).
+resolve_repo() {
+    local input=$1
+    local path
+    local remote_url
+
+    if [ -z "$input" ]; then
+        return 1
+    fi
+
+    if parsed=$(parse_github_remote "$input"); then
+        echo "$parsed"
+        return 0
+    fi
+
+    if [[ "$input" =~ ^[^/]+/[^/]+$ ]] && [[ "$input" != *://* ]] && [[ "$input" != *@* ]]; then
+        echo "$input"
+        return 0
+    fi
+
+    if [ -e "$input" ] || [ "$input" = "." ]; then
+        path=$(cd "$input" 2>/dev/null && pwd) || return 1
+        if ! git -C "$path" rev-parse --git-dir &>/dev/null; then
+            return 1
+        fi
+        remote_url=$(git -C "$path" remote get-url origin 2>/dev/null) || return 1
+        if parsed=$(parse_github_remote "$remote_url"); then
+            echo "$parsed"
+            return 0
+        fi
+        echo "origin remote is not a github.com URL: ${remote_url}" >&2
+        return 1
+    fi
+
+    return 1
 }
 
 days_since_iso() {
@@ -44,63 +94,36 @@ days_since_iso() {
         then=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$iso_date" '+%s' 2>/dev/null) \
             || then=$(date -j -f "%Y-%m-%dT%H:%M:%S%z" "$iso_date" '+%s')
     fi
-    days_since_epoch "$then"
+    echo $(( ($(date '+%s') - then) / 86400 ))
 }
 
-report_branch() {
+check_branch_open_prs() {
     local branch=$1
-    local days=$2
-    print_separator
-    echo -e "checking ${WHITE}${branch}${NC}"
-    if [ "$days" -gt "$INACTIVITY_DAYS" ]; then
-        echo -e "${RED}inactive for more than ${INACTIVITY_DAYS} days (${days} days)${NC}"
-        return 1
-    fi
-    echo -e "OK (${days} days)"
-    return 0
-}
+    local owner=${REPO%%/*}
+    local prs
+    local count
 
-# Prints "mode|value" where mode is local, api, or clone.
-resolve_target() {
-    local input=$1
-    local path
+    prs=$(curl -sG -H "Authorization: token $GH_TOKEN" \
+        "${GITHUB_API}/repos/${REPO}/pulls" \
+        --data-urlencode "state=open" \
+        --data-urlencode "head=${owner}:${branch}")
 
-    if [ -z "$input" ]; then
+    if ! echo "$prs" | jq -e 'type == "array"' >/dev/null 2>&1; then
+        echo "  could not check open PRs for this branch" >&2
         return 1
     fi
 
-    if [ -e "$input" ] || [ "$input" = "." ]; then
-        path=$(cd "$input" 2>/dev/null && pwd) || return 1
-        if git -C "$path" rev-parse --git-dir &>/dev/null; then
-            echo "local|$path"
-            return 0
-        fi
-    fi
-
-    if [[ "$input" =~ ^https?://github\.com/([^/]+)/([^/.]+) ]]; then
-        echo "api|${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+    count=$(echo "$prs" | jq 'length')
+    if [ "${count:-0}" -gt 0 ]; then
+        echo -e "${YELLOW}open PR(s) for this branch:${NC}"
+        echo "$prs" | jq -r '.[] | "  #\(.number): \(.html_url)"'
         return 0
     fi
-
-    if [[ "$input" =~ ^git@github\.com:([^/]+)/([^/.]+) ]]; then
-        echo "api|${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
-        return 0
-    fi
-
-    if [[ "$input" =~ ^[^/]+/[^/]+$ ]] && [[ "$input" != *://* ]] && [[ "$input" != *@* ]]; then
-        echo "api|$input"
-        return 0
-    fi
-
-    if [[ "$input" =~ ^(https?://|git@) ]]; then
-        echo "clone|$input"
-        return 0
-    fi
-
+    echo "  no open PR for this branch"
     return 1
 }
 
-check_branch_api() {
+check_branch() {
     local branches_endpoint=$1
     local branch=$2
     local last_commit_date
@@ -108,10 +131,18 @@ check_branch_api() {
 
     last_commit_date=$(curl -H "Authorization: token $GH_TOKEN" -sL "${branches_endpoint}/${branch}" | jq -r '.commit.commit.committer.date')
     days=$(days_since_iso "$last_commit_date")
-    report_branch "$branch" "$days"
+    print_separator
+    echo -e "checking ${WHITE}${branch}${NC}"
+    if [ "$days" -gt "$INACTIVITY_DAYS" ]; then
+        echo -e "${RED}inactive for more than ${INACTIVITY_DAYS} days (${days} days)${NC}"
+        check_branch_open_prs "$branch"
+        return 1
+    fi
+    echo -e "OK (${days} days)"
+    return 0
 }
 
-read_branches_api() {
+read_branches() {
     local branches_endpoint=$1
     local page=$2
     local branches
@@ -127,89 +158,27 @@ read_branches_api() {
     fi
 
     for branch in $branches; do
-        check_branch_api "$branches_endpoint" "$branch"
+        check_branch "$branches_endpoint" "$branch"
     done
 
     page=$((page + 1))
     return $page
 }
 
-check_branches_local() {
-    local repo_path=$1
-    local branches
-    local branch
-    local last_epoch
-    local days
+if [ -z "$GH_TOKEN" ]; then
+    echo "GH_TOKEN is required" >&2
+    exit 1
+fi
 
-    branches=$(git -C "$repo_path" for-each-ref refs/heads/ --format='%(refname:short)')
-    if [ -z "$branches" ]; then
-        print_separator
-        echo "no local branches found"
-        return 0
-    fi
-
-    for branch in $branches; do
-        last_epoch=$(git -C "$repo_path" log -1 --format='%ct' "$branch" 2>/dev/null)
-        if [ -z "$last_epoch" ]; then
-            continue
-        fi
-        days=$(days_since_epoch "$last_epoch")
-        report_branch "$branch" "$days"
-    done
-}
-
-run_api_mode() {
-    local repo=$1
-    local page=1
-
-    if [ -z "$GH_TOKEN" ]; then
-        echo "GH_TOKEN is required for GitHub API mode" >&2
-        exit 1
-    fi
-
-    echo "checking branches via GitHub API: ${repo}"
-    while [ "$page" -gt 0 ]; do
-        read_branches_api "$GITHUB_API/repos/$repo/branches" "$page"
-        page=$?
-    done
-}
-
-run_clone_mode() {
-    local url=$1
-    local tmp
-
-    tmp=$(mktemp -d)
-    trap 'rm -rf "$tmp"' EXIT
-
-    echo "cloning ${url} (bare) to inspect branches..."
-    if ! git clone --bare --quiet "$url" "$tmp/repo" 2>/dev/null; then
-        echo "failed to clone ${url}" >&2
-        exit 1
-    fi
-
-    check_branches_local "$tmp/repo"
-}
-
-TARGET=$(resolve_target "$1")
-if [ $? -ne 0 ] || [ -z "$TARGET" ]; then
+REPO=$(resolve_repo "$1")
+if [ $? -ne 0 ] || [ -z "$REPO" ]; then
     usage
 fi
 
-MODE=${TARGET%%|*}
-VALUE=${TARGET#*|}
+echo "checking branches via GitHub API: ${REPO}"
 
-case "$MODE" in
-    local)
-        echo "checking branches in local repo: ${VALUE}"
-        check_branches_local "$VALUE"
-        ;;
-    api)
-        run_api_mode "$VALUE"
-        ;;
-    clone)
-        run_clone_mode "$VALUE"
-        ;;
-    *)
-        usage
-        ;;
-esac
+page=1
+while [ "$page" -gt 0 ]; do
+    read_branches "$GITHUB_API/repos/$REPO/branches" "$page"
+    page=$?
+done
