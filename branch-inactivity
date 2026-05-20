@@ -1,51 +1,215 @@
 #!/usr/bin/env bash
 
 GITHUB_API=${GITHUB_API:-https://api.github.com}
-REPO=$1
+INACTIVITY_DAYS=${INACTIVITY_DAYS:-90}
 
 RED='\033[0;31m'
 WHITE='\033[1;37m'
 GRAY='\033[1;30m'
 NC='\033[0m' # No Color
 
+usage() {
+    echo "Usage: $(basename "$0") <repo>"
+    echo ""
+    echo "  repo can be:"
+    echo "    - owner/repo              (GitHub API; requires GH_TOKEN)"
+    echo "    - https://github.com/owner/repo"
+    echo "    - git@github.com:owner/repo.git"
+    echo "    - /path/to/local/repo     (or . for the current directory)"
+    echo "    - any other git remote URL (bare clone to a temp directory)"
+    echo ""
+    echo "  Environment:"
+    echo "    GH_TOKEN           GitHub token (required for GitHub API mode)"
+    echo "    INACTIVITY_DAYS    Threshold in days (default: 90)"
+    exit 1
+}
+
 print_separator() {
     echo -e "${GRAY}============================================================${NC}"
 }
 
-check_branch() {
-    branch=$2
-    last_commit_date=$(curl -H "Authorization: token $GH_TOKEN" -sL $1/$branch | jq -r '.commit.commit.committer.date')
-    last_commit_diff_days=$(echo "(`date '+%s'` - `date '+%s' -d "$last_commit_date"`) / (24*3600)" | bc)
-    if [ $last_commit_diff_days -gt 89 ]; then
-        echo -e "${RED}inactive for more than 90 days (${last_commit_diff_days} days)${NC}"
+days_since_epoch() {
+    local epoch=$1
+    local now
+    now=$(date '+%s')
+    echo $(( (now - epoch) / 86400 ))
+}
+
+days_since_iso() {
+    local iso_date=$1
+    local then
+    if date -d "$iso_date" &>/dev/null 2>&1; then
+        then=$(date -d "$iso_date" '+%s')
+    else
+        then=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$iso_date" '+%s' 2>/dev/null) \
+            || then=$(date -j -f "%Y-%m-%dT%H:%M:%S%z" "$iso_date" '+%s')
+    fi
+    days_since_epoch "$then"
+}
+
+report_branch() {
+    local branch=$1
+    local days=$2
+    print_separator
+    echo -e "checking ${WHITE}${branch}${NC}"
+    if [ "$days" -gt "$INACTIVITY_DAYS" ]; then
+        echo -e "${RED}inactive for more than ${INACTIVITY_DAYS} days (${days} days)${NC}"
         return 1
     fi
-    echo -e "OK (${last_commit_diff_days} days)"
+    echo -e "OK (${days} days)"
     return 0
 }
 
-read_branches() {
-    page=$2
-    branches=$(curl -H "Authorization: token $GH_TOKEN" -sL $1?page=$page | jq -r '.[].name')
-    branches_length=$(echo $branches | tr -d '\n' | wc -m)
-    if [ $branches_length -eq 0 ]; then
+# Prints "mode|value" where mode is local, api, or clone.
+resolve_target() {
+    local input=$1
+    local path
+
+    if [ -z "$input" ]; then
+        return 1
+    fi
+
+    if [ -e "$input" ] || [ "$input" = "." ]; then
+        path=$(cd "$input" 2>/dev/null && pwd) || return 1
+        if git -C "$path" rev-parse --git-dir &>/dev/null; then
+            echo "local|$path"
+            return 0
+        fi
+    fi
+
+    if [[ "$input" =~ ^https?://github\.com/([^/]+)/([^/.]+) ]]; then
+        echo "api|${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+        return 0
+    fi
+
+    if [[ "$input" =~ ^git@github\.com:([^/]+)/([^/.]+) ]]; then
+        echo "api|${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+        return 0
+    fi
+
+    if [[ "$input" =~ ^[^/]+/[^/]+$ ]] && [[ "$input" != *://* ]] && [[ "$input" != *@* ]]; then
+        echo "api|$input"
+        return 0
+    fi
+
+    if [[ "$input" =~ ^(https?://|git@) ]]; then
+        echo "clone|$input"
+        return 0
+    fi
+
+    return 1
+}
+
+check_branch_api() {
+    local branches_endpoint=$1
+    local branch=$2
+    local last_commit_date
+    local days
+
+    last_commit_date=$(curl -H "Authorization: token $GH_TOKEN" -sL "${branches_endpoint}/${branch}" | jq -r '.commit.commit.committer.date')
+    days=$(days_since_iso "$last_commit_date")
+    report_branch "$branch" "$days"
+}
+
+read_branches_api() {
+    local branches_endpoint=$1
+    local page=$2
+    local branches
+    local branches_length
+    local branch
+
+    branches=$(curl -H "Authorization: token $GH_TOKEN" -sL "${branches_endpoint}?page=${page}" | jq -r '.[].name')
+    branches_length=$(echo "$branches" | tr -d '\n' | wc -m | tr -d ' ')
+    if [ "$branches_length" -eq 0 ]; then
         print_separator
         echo "there is no more branches to check"
         return 0
     fi
 
     for branch in $branches; do
-        print_separator
-        echo -e "checking ${WHITE}${branch}${NC}"
-        check_branch $1 $branch
+        check_branch_api "$branches_endpoint" "$branch"
     done
 
-    page=$(($page+1))
+    page=$((page + 1))
     return $page
 }
 
-page=1
-while [ $page -gt 0 ]; do
-    read_branches $GITHUB_API/repos/$REPO/branches $page
-    page=$?
-done
+check_branches_local() {
+    local repo_path=$1
+    local branches
+    local branch
+    local last_epoch
+    local days
+
+    branches=$(git -C "$repo_path" for-each-ref refs/heads/ --format='%(refname:short)')
+    if [ -z "$branches" ]; then
+        print_separator
+        echo "no local branches found"
+        return 0
+    fi
+
+    for branch in $branches; do
+        last_epoch=$(git -C "$repo_path" log -1 --format='%ct' "$branch" 2>/dev/null)
+        if [ -z "$last_epoch" ]; then
+            continue
+        fi
+        days=$(days_since_epoch "$last_epoch")
+        report_branch "$branch" "$days"
+    done
+}
+
+run_api_mode() {
+    local repo=$1
+    local page=1
+
+    if [ -z "$GH_TOKEN" ]; then
+        echo "GH_TOKEN is required for GitHub API mode" >&2
+        exit 1
+    fi
+
+    echo "checking branches via GitHub API: ${repo}"
+    while [ "$page" -gt 0 ]; do
+        read_branches_api "$GITHUB_API/repos/$repo/branches" "$page"
+        page=$?
+    done
+}
+
+run_clone_mode() {
+    local url=$1
+    local tmp
+
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+
+    echo "cloning ${url} (bare) to inspect branches..."
+    if ! git clone --bare --quiet "$url" "$tmp/repo" 2>/dev/null; then
+        echo "failed to clone ${url}" >&2
+        exit 1
+    fi
+
+    check_branches_local "$tmp/repo"
+}
+
+TARGET=$(resolve_target "$1")
+if [ $? -ne 0 ] || [ -z "$TARGET" ]; then
+    usage
+fi
+
+MODE=${TARGET%%|*}
+VALUE=${TARGET#*|}
+
+case "$MODE" in
+    local)
+        echo "checking branches in local repo: ${VALUE}"
+        check_branches_local "$VALUE"
+        ;;
+    api)
+        run_api_mode "$VALUE"
+        ;;
+    clone)
+        run_clone_mode "$VALUE"
+        ;;
+    *)
+        usage
+        ;;
+esac
